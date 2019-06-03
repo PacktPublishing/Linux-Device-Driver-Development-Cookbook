@@ -1,0 +1,5 @@
+chrdev_ioctl
+chrdev_mmap
+chrdev_fasync
+chrdev_select
+textfile.txt

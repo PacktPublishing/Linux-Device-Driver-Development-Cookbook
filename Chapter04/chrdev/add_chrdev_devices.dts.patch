@@ -1,0 +1,28 @@
+diff --git a/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts b/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts
+index 3ab25ad402b9..71e7f4336a56 100644
+--- a/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts
++++ b/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts
+@@ -41,6 +41,23 @@
+ 			  3300000 0x0>;
+ 		enable-active-high;
+ 	};
++
++	chrdev {
++		compatible = "ldddc,chrdev";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		chrdev@2 {
++			label = "cdev-eeprom";
++			reg = <2>;
++		};
++
++		chrdev@4 {
++			label = "cdev-rom";
++			reg = <4>;
++			read-only;
++		};
++	};
+ };
+ 
+ /* J9 */

@@ -1,0 +1,21 @@
+diff --git a/chapter_3/chrdev_test.c b/chapter_3/chrdev_test.c
+index f72d4aa..7b5bc05 100644
+--- a/chapter_3/chrdev_test.c
++++ b/chapter_3/chrdev_test.c
+@@ -55,6 +55,16 @@ int main(int argc, char *argv[])
+ 		dump("data written are: ", buf, n);
+ 	}
+ 
++	close(fd);
++
++	ret = open(argv[1], O_RDWR);
++	if (ret < 0) {
++		perror("open");
++		exit(EXIT_FAILURE);
++	}
++	printf("file %s reopened\n", argv[1]);
++	fd = ret;
++
+ 	for (c = 0; c < sizeof(buf); c += n) {
+ 		ret = read(fd, buf, sizeof(buf));
+ 		if (ret == 0) {

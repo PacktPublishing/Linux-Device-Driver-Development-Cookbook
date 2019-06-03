@@ -1,0 +1,42 @@
+diff --git a/drivers/misc/irqtest.c b/drivers/misc/irqtest.c
+index 186b4bbb23fb..248bcbb0ae72 100644
+--- a/drivers/misc/irqtest.c
++++ b/drivers/misc/irqtest.c
+@@ -26,9 +26,19 @@ static struct irqtest_data {
+ } irqinfo;
+ 
+ /*
+- * The interrupt handler
++ * The interrupt handlers
+  */
+ 
++static void irqtest_tasklet_handler(unsigned long flag)
++{
++	struct irqtest_data *info = (struct irqtest_data *) flag;
++	struct device *dev = info->dev;
++
++	dev_info(dev, "tasklet executed after IRQ %d", info->irq);
++}
++DECLARE_TASKLET(irqtest_tasklet, irqtest_tasklet_handler,
++		(unsigned long) &irqinfo);
++
+ static irqreturn_t irqtest_interrupt(int irq, void *dev_id)
+ {
+ 	struct irqtest_data *info = dev_id;
+@@ -36,6 +46,8 @@ static irqreturn_t irqtest_interrupt(int irq, void *dev_id)
+ 
+ 	dev_info(dev, "interrupt occurred on IRQ %d\n", irq);
+ 
++	tasklet_schedule(&irqtest_tasklet);
++
+ 	return IRQ_HANDLED;
+ }
+ 
+@@ -98,6 +110,7 @@ static int irqtest_remove(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+ 
++	tasklet_kill(&irqtest_tasklet);
+ 	free_irq(irqinfo.irq, &irqinfo);
+ 	dev_info(dev, "IRQ %d is now unmanaged!\n", irqinfo.irq);
+ 

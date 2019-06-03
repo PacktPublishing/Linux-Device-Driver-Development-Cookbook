@@ -1,0 +1,173 @@
+diff --git a/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts b/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts
+index 3ab25ad402b9..cf4831f3d7cc 100644
+--- a/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts
++++ b/arch/arm64/boot/dts/marvell/armada-3720-espressobin.dts
+@@ -41,6 +41,12 @@
+ 			  3300000 0x0>;
+ 		enable-active-high;
+ 	};
++
++	irqtest {
++		compatible = "ldddc,irqtest";
++
++		gpios = <&gpiosb 20 GPIO_ACTIVE_LOW>;
++	};
+ };
+ 
+ /* J9 */
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 3726eacdf65d..da4ab76114ab 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -527,4 +527,11 @@ source "drivers/misc/echo/Kconfig"
+ source "drivers/misc/cxl/Kconfig"
+ source "drivers/misc/ocxl/Kconfig"
+ source "drivers/misc/cardreader/Kconfig"
++
++config IRQTEST_CODE
++	tristate "Simple IRQ test"
++	default n
++	---help---
++	  The irqtest module.
++
+ endmenu
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index af22bbc3d00c..f74099e75af3 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -58,3 +58,4 @@ obj-$(CONFIG_ASPEED_LPC_SNOOP)	+= aspeed-lpc-snoop.o
+ obj-$(CONFIG_PCI_ENDPOINT_TEST)	+= pci_endpoint_test.o
+ obj-$(CONFIG_OCXL)		+= ocxl/
+ obj-$(CONFIG_MISC_RTSX)		+= cardreader/
++obj-$(CONFIG_IRQTEST_CODE)	+= irqtest.o
+diff --git a/drivers/misc/irqtest.c b/drivers/misc/irqtest.c
+new file mode 100644
+index 000000000000..186b4bbb23fb
+--- /dev/null
++++ b/drivers/misc/irqtest.c
+@@ -0,0 +1,125 @@
++/*
++ * irqtest
++ */
++
++#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
++#include <linux/errno.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/of_gpio.h>
++#include <linux/property.h>
++#include <linux/gpio.h>
++#include <linux/irq.h>
++#include <linux/interrupt.h>
++
++/*
++ * Module data
++ */
++
++static struct irqtest_data {
++	int irq;
++	unsigned int pin;
++	struct device *dev;
++} irqinfo;
++
++/*
++ * The interrupt handler
++ */
++
++static irqreturn_t irqtest_interrupt(int irq, void *dev_id)
++{
++	struct irqtest_data *info = dev_id;
++	struct device *dev = info->dev;
++
++	dev_info(dev, "interrupt occurred on IRQ %d\n", irq);
++
++	return IRQ_HANDLED;
++}
++
++/*
++ * Probe/remove functions
++ */
++
++static int irqtest_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++	int ret;
++
++	/* Read gpios property (just the first entry) */
++	ret = of_get_gpio(np, 0);
++	if (ret < 0) {
++		dev_err(dev, "failed to get GPIO from device tree\n");
++		return ret;
++	}
++	irqinfo.pin = ret;
++	dev_info(dev, "got GPIO %u from DTS\n", irqinfo.pin);
++
++	/* Now request the GPIO and set the line as an input */
++	ret = devm_gpio_request(dev, irqinfo.pin, "irqtest");
++	if (ret) {
++		dev_err(dev, "failed to request GPIO %u\n", irqinfo.pin);
++		return ret;
++	}
++	ret = gpio_direction_input(irqinfo.pin);
++	if (ret) {
++		dev_err(dev, "failed to set pin input direction\n");
++		return -EINVAL;
++	}
++
++	/* Now ask to the kernel to convert GPIO line into an IRQ line */
++	ret = gpio_to_irq(irqinfo.pin);
++	if (ret < 0) {
++		dev_err(dev, "failed to map GPIO to IRQ!\n");
++		return -EINVAL;
++	}
++	irqinfo.irq = ret;
++	dev_info(dev, "GPIO %u correspond to IRQ %d\n",
++				irqinfo.pin, irqinfo.irq);
++
++	/* Request IRQ line and setup corresponding handler */
++	irqinfo.dev = dev;
++	ret = request_irq(irqinfo.irq, irqtest_interrupt, 0,
++				"irqtest", &irqinfo);
++	if (ret) {
++		dev_err(dev, "cannot register IRQ %d\n", irqinfo.irq);
++		return -EIO;
++	}
++	dev_info(dev, "interrupt handler for IRQ %d is now ready!\n",
++				irqinfo.irq);
++
++	return 0;
++}
++
++static int irqtest_remove(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++
++	free_irq(irqinfo.irq, &irqinfo);
++	dev_info(dev, "IRQ %d is now unmanaged!\n", irqinfo.irq);
++
++	return 0;
++}
++
++static const struct of_device_id irqtest_dt_ids[] = {
++	{ .compatible = "ldddc,irqtest", },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, irqtest_dt_ids);
++
++static struct platform_driver irqtest_driver = {
++	.probe	  = irqtest_probe,
++	.remove	 = irqtest_remove,
++	.driver	 = {
++		.name   = "irqtest",
++		.of_match_table = irqtest_dt_ids,
++	},
++};
++
++module_platform_driver(irqtest_driver);
++MODULE_AUTHOR("Rodolfo Giometti");
++MODULE_DESCRIPTION("IRQ test module");
++MODULE_LICENSE("GPL");

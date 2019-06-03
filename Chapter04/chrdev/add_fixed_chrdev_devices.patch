@@ -1,0 +1,113 @@
+diff --git a/chapter_4/chrdev/chrdev-req.c b/chapter_4/chrdev/chrdev-req.c
+index 653176d..2048cd8 100644
+--- a/chapter_4/chrdev/chrdev-req.c
++++ b/chapter_4/chrdev/chrdev-req.c
+@@ -9,10 +9,24 @@
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_device.h>
++#include <linux/platform_device.h>
+ #include <linux/property.h>
+ 
+ #include "chrdev.h"
+ 
++/*
++ * Fixed data
++ */
++
++static const struct chrdev_fixed_data chrdev_fd = {
++	.label		= "cdev-fixed",
++};
++
++static const struct chrdev_fixed_data chrdev_fd_ro = {
++	.label		= "cdev-fixedro",
++	.read_only	= 1,
++};
++
+ /*
+  * Platform driver stuff
+  */
+@@ -20,10 +34,26 @@
+ static int chrdev_req_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++	const struct chrdev_fixed_data *data = of_device_get_match_data(dev);
+ 	struct fwnode_handle *child;
+ 	struct module *owner = THIS_MODULE;
+ 	int count, ret;
+ 
++	/* Check the chrdev device type */
++	if (of_device_is_compatible(np, "ldddc,chrdev-fixed") ||
++	    of_device_is_compatible(np, "ldddc,chrdev-fixed_read-only")) {
++		ret = chrdev_device_register(data->label, 0,
++					     data->read_only, owner, dev);
++		if (ret)
++			dev_err(dev, "unable to register fixed");
++
++		return ret;
++	}
++
++	/* If we are not registering a fixed chrdev device then get
++	 * the number of chrdev devices from DTS
++	 */
+ 	count = device_get_child_node_count(dev);
+ 	if (count == 0)
+ 		return -ENODEV;
+@@ -65,9 +95,24 @@ static int chrdev_req_probe(struct platform_device *pdev)
+ static int chrdev_req_remove(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++	const struct chrdev_fixed_data *data = of_device_get_match_data(dev);
+ 	struct fwnode_handle *child;
+ 	int ret;
+ 
++	/* Check the chrdev device type */
++	if (of_device_is_compatible(np, "ldddc,chrdev-fixed") ||
++	    of_device_is_compatible(np, "ldddc,chrdev-fixed_read-only")) {
++		ret = chrdev_device_unregister(data->label, 0);
++		if (ret)
++			dev_err(dev, "unable to unregister");
++
++		return ret;
++	}
++
++	/* If we are not unregistering a fixed chrdev device then get
++	 * the number of chrdev devices from DTS
++	 */
+ 	device_for_each_child_node(dev, child) {
+ 		const char *label;
+ 		int id;
+@@ -98,6 +143,14 @@ static const struct of_device_id of_chrdev_req_match[] = {
+ 	{
+ 		.compatible	= "ldddc,chrdev",
+ 	},
++	{
++		.compatible	= "ldddc,chrdev-fixed",
++		.data = &chrdev_fd,
++	},
++	{
++		.compatible	= "ldddc,chrdev-fixed_read-only",
++		.data = &chrdev_fd_ro,
++	},
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, of_chrdev_req_match);
+diff --git a/chapter_4/chrdev/chrdev.h b/chapter_4/chrdev/chrdev.h
+index 9498467..0b5a334 100644
+--- a/chapter_4/chrdev/chrdev.h
++++ b/chapter_4/chrdev/chrdev.h
+@@ -25,6 +25,12 @@ struct chrdev_device {
+ 	struct device *dev;
+ };
+ 
++struct chrdev_fixed_data {
++        char *label;
++        int read_only;
++};
++
++
+ /*
+  * Exported functions
+  */

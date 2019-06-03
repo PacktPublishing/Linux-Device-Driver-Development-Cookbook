@@ -1,0 +1,53 @@
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 3726eacdf65d..64aa35c08eee 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -527,4 +527,10 @@ source "drivers/misc/echo/Kconfig"
+ source "drivers/misc/cxl/Kconfig"
+ source "drivers/misc/ocxl/Kconfig"
+ source "drivers/misc/cardreader/Kconfig"
++
++config DUMMY_CODE
++	tristate "Dummy code"
++	default n
++	---help---
++	  This module is just for demonstration purposes.
+ endmenu
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index af22bbc3d00c..47ee613df600 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -58,3 +58,4 @@ obj-$(CONFIG_ASPEED_LPC_SNOOP)	+= aspeed-lpc-snoop.o
+ obj-$(CONFIG_PCI_ENDPOINT_TEST)	+= pci_endpoint_test.o
+ obj-$(CONFIG_OCXL)		+= ocxl/
+ obj-$(CONFIG_MISC_RTSX)		+= cardreader/
++obj-$(CONFIG_DUMMY_CODE)	+= dummy-code.o
+diff --git a/drivers/misc/dummy-code.c b/drivers/misc/dummy-code.c
+new file mode 100644
+index 000000000000..c1bbbdfed873
+--- /dev/null
++++ b/drivers/misc/dummy-code.c
+@@ -0,0 +1,23 @@
++/*
++ * Dummy code
++ */
++
++#include <linux/module.h>
++
++static int __init dummy_code_init(void)
++{
++	printk(KERN_INFO "dummy-code loaded\n");
++	return 0;
++}
++
++static void __exit dummy_code_exit(void)
++{
++	printk(KERN_INFO "dummy-code unloaded\n");
++}
++
++module_init(dummy_code_init);
++module_exit(dummy_code_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Rodolfo Giometti");
++MODULE_DESCRIPTION("Dummy code");

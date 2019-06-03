@@ -1,0 +1,102 @@
+diff --git a/drivers/misc/irqtest.c b/drivers/misc/irqtest.c
+index 1cb8636599d7..e73d35e87303 100644
+--- a/drivers/misc/irqtest.c
++++ b/drivers/misc/irqtest.c
+@@ -14,6 +14,7 @@
+ #include <linux/gpio.h>
+ #include <linux/irq.h>
+ #include <linux/interrupt.h>
++#include <linux/workqueue.h>
+ 
+ /*
+  * Module data
+@@ -23,12 +24,37 @@ static struct irqtest_data {
+ 	int irq;
+ 	unsigned int pin;
+ 	struct device *dev;
++	struct work_struct work;
++	struct delayed_work dwork;
+ } irqinfo;
+ 
++static struct workqueue_struct *irqtest_wq;
++
+ /*
+- * The interrupt handler
++ * The interrupt handlers
+  */
+ 
++static void irqtest_dwork_handler(struct work_struct *ptr)
++{
++	struct irqtest_data *info = container_of(ptr, struct irqtest_data,
++                                                        dwork.work);
++	struct device *dev = info->dev;
++
++	dev_info(dev, "delayed work executed after work");
++}
++
++static void irqtest_work_handler(struct work_struct *ptr)
++{
++	struct irqtest_data *info = container_of(ptr, struct irqtest_data,
++                                                        work);
++	struct device *dev = info->dev;
++
++	dev_info(dev, "work executed after IRQ %d", info->irq);
++
++	/* Schedule the delayed work after 2 seconds */
++	queue_delayed_work(irqtest_wq, &info->dwork, 2*HZ);
++}
++
+ static irqreturn_t irqtest_interrupt(int irq, void *dev_id)
+ {
+ 	struct irqtest_data *info = dev_id;
+@@ -36,6 +62,8 @@ static irqreturn_t irqtest_interrupt(int irq, void *dev_id)
+ 
+ 	dev_info(dev, "interrupt occurred on IRQ %d\n", irq);
+ 
++	queue_work(irqtest_wq, &info->work);
++
+ 	return IRQ_HANDLED;
+ }
+ 
+@@ -80,24 +108,40 @@ static int irqtest_probe(struct platform_device *pdev)
+ 	dev_info(dev, "GPIO %u correspond to IRQ %d\n",
+ 				irqinfo.pin, irqinfo.irq);
+ 
++	/* Create our work queue and init works */
++	irqtest_wq = create_singlethread_workqueue("irqtest");
++	if (!irqtest_wq) {
++		dev_err(dev, "failed to create work queue!\n");
++		return -EINVAL;
++	}
++	INIT_WORK(&irqinfo.work, irqtest_work_handler);
++	INIT_DELAYED_WORK(&irqinfo.dwork, irqtest_dwork_handler);
++
+ 	/* Request IRQ line and setup corresponding handler */
+ 	irqinfo.dev = dev;
+ 	ret = request_irq(irqinfo.irq, irqtest_interrupt, 0,
+ 				"irqtest", &irqinfo);
+ 	if (ret) {
+ 		dev_err(dev, "cannot register IRQ %d\n", irqinfo.irq);
+-		return -EIO;
++		goto flush_wq;
+ 	}
+ 	dev_info(dev, "interrupt handler for IRQ %d is now ready!\n",
+ 				irqinfo.irq);
+ 
+ 	return 0;
++
++flush_wq:
++	flush_workqueue(irqtest_wq);
++	return -EIO;
+ }
+ 
+ static int irqtest_remove(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+ 
++	cancel_work_sync(&irqinfo.work);
++	cancel_delayed_work_sync(&irqinfo.dwork);
++	flush_workqueue(irqtest_wq);
+ 	free_irq(irqinfo.irq, &irqinfo);
+ 	dev_info(dev, "IRQ %d is now unmanaged!\n", irqinfo.irq);
+ 

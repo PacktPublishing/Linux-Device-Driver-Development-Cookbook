@@ -1,0 +1,90 @@
+/dts-v1/;
+
+/ {
+	model = "fsl,mpc8572ds";
+	compatible = "fsl,mpc8572ds";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	chosen {
+		bootargs = "root=/dev/sda2";
+	};
+
+	aliases {
+		tty0 = &serial0;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			reg = <0>;
+			timebase-frequency=<825000000>;
+			clock-frequency=<825000000>;
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			reg = <1>;
+			timebase-frequency=<825000000>;
+			clock-frequency=<825000000>;
+		};
+
+
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x20000000>;
+	};
+
+	clocks {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		osc: osc {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <33000000>;
+		};
+	};
+
+	soc@80000000 {
+		compatible = "fsl,mpc5121-immr";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		device_type = "soc";
+		ranges = <0x0 0x80000000 0x400000>;
+		reg = <0x80000000 0x400000>;
+		bus-frequency = <66666666>;
+
+		ipic: interrupt-controller@c00 {
+			compatible = "fsl,mpc5121-ipic", "fsl,ipic";
+			interrupt-controller;
+			#address-cells = <0>;
+			#interrupt-cells = <2>;
+			reg = <0xc00 0x100>;
+		};
+
+		clks: clock@f00 {
+			compatible = "fsl,mpc5121-clock";
+			reg = <0xf00 0x100>;
+			#clock-cells = <1>;
+			clocks = <&osc>;
+			clock-names = "osc";
+		};
+
+		serial0: serial@11100 {
+			compatible = "fsl,mpc5125-psc-uart", "fsl,mpc5125-psc";
+			reg = <0x11100 0x100>;
+			interrupt-parent = <&ipic>;
+			interrupts = <40 0x8>;
+			fsl,rx-fifo-size = <16>;
+			fsl,tx-fifo-size = <16>;
+			clocks = <&clks 47>, <&clks 34>;
+			clock-names = "ipg", "mclk";
+		};
+	};
+};

@@ -1,0 +1,18 @@
+diff --git a/chapter_03/chrdev_test.c b/chapter_03/chrdev_test.c
+index 94e04e0..3e8420d 100644
+--- a/chapter_03/chrdev_test.c
++++ b/chapter_03/chrdev_test.c
+@@ -55,6 +55,13 @@ int main(int argc, char *argv[])
+ 		dump("data written are: ", buf + c, n);
+ 	}
+ 
++	ret = lseek(fd, SEEK_SET, 0);
++	if (ret < 0) {
++		perror("lseek");
++		exit(EXIT_FAILURE);
++	}
++	printf("*ppos moved to 0\n");
++
+ 	for (c = 0; c < sizeof(buf); c += n) {
+ 		ret = read(fd, buf, sizeof(buf));
+ 		if (ret == 0) {

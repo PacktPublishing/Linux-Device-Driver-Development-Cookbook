@@ -1,0 +1,181 @@
+diff --git a/chapter_07/chrdev/chrdev.c b/chapter_07/chrdev/chrdev.c
+index 8c5f6d8..bb37e4c 100644
+--- a/chapter_07/chrdev/chrdev.c
++++ b/chapter_07/chrdev/chrdev.c
+@@ -73,6 +73,9 @@ static long chrdev_ioctl(struct file *filp,
+ 	dev_info(chrdev->dev, "cmd nr=%d size=%d dir=%x\n",
+ 			_IOC_NR(cmd), _IOC_SIZE(cmd), _IOC_DIR(cmd));
+ 
++	/* Grab the mutex */
++	mutex_lock(&chrdev->mux);
++
+ 	switch (cmd) {
+ 	case CHRDEV_IOC_GETINFO:
+ 		dev_info(chrdev->dev, "CHRDEV_IOC_GETINFO\n");
+@@ -81,8 +84,10 @@ static long chrdev_ioctl(struct file *filp,
+ 		info.read_only = chrdev->read_only;
+ 
+ 		ret = copy_to_user(uarg, &info, sizeof(struct chrdev_info));
+-		if (ret)
+-			return -EFAULT;
++		if (ret) {
++			ret = -EFAULT;
++			goto unlock;
++		}
+ 
+ 		break;
+ 
+@@ -90,16 +95,24 @@ static long chrdev_ioctl(struct file *filp,
+ 		dev_info(chrdev->dev, "WDIOC_SET_RDONLY\n");
+ 
+ 		ret = get_user(chrdev->read_only, iuarg);
+-		if (ret)
+-			return -EFAULT;
++		if (ret) {
++			ret = -EFAULT;
++			goto unlock;
++		}
+ 
+ 		break;
+ 
+ 	default:
+-		return -ENOIOCTLCMD;
++		ret = -ENOIOCTLCMD;
++		goto unlock;
+ 	}
++	ret = 0;
+ 
+-	return 0;
++unlock:
++	/* Release the mutex */
++	mutex_unlock(&chrdev->mux);
++
++	return ret;
+ }
+ 
+ static loff_t chrdev_llseek(struct file *filp, loff_t offset, int whence)
+@@ -110,6 +123,9 @@ static loff_t chrdev_llseek(struct file *filp, loff_t offset, int whence)
+ 	dev_info(chrdev->dev, "should move *ppos=%lld by whence %d off=%lld\n",
+ 				filp->f_pos, whence, offset);
+ 
++	/* Grab the mutex */
++	mutex_lock(&chrdev->mux);
++
+ 	switch (whence) {
+ 	case SEEK_SET:
+ 		newppos = offset;
+@@ -124,15 +140,22 @@ static loff_t chrdev_llseek(struct file *filp, loff_t offset, int whence)
+ 		break;
+ 
+ 	default:
+-		return -EINVAL;
++		newppos = -EINVAL;
++		goto unlock;
+ 	}
+ 
+-	if ((newppos < 0) || (newppos >= BUF_LEN))
+-		return -EINVAL;
++	if ((newppos < 0) || (newppos >= BUF_LEN)) {
++		newppos = -EINVAL;
++		goto unlock;
++	}
+ 
+ 	filp->f_pos = newppos;
+ 	dev_info(chrdev->dev, "return *ppos=%lld\n", filp->f_pos);
+ 
++unlock:
++	/* Release the mutex */
++	mutex_unlock(&chrdev->mux);
++
+ 	return newppos;
+ }
+ 
+@@ -145,18 +168,27 @@ static ssize_t chrdev_read(struct file *filp,
+ 	dev_info(chrdev->dev, "should read %ld bytes (*ppos=%lld)\n",
+ 				count, *ppos);
+ 
++	/* Grab the mutex */
++	mutex_lock(&chrdev->mux);
++
+ 	/* Check for end-of-buffer */
+ 	if (*ppos + count >= BUF_LEN)
+ 		count = BUF_LEN - *ppos;
+ 
+ 	/* Return data to the user space */
+ 	ret = copy_to_user(buf, chrdev->buf + *ppos, count);
+-	if (ret < 0)
+-		return -EFAULT;
++	if (ret < 0) {
++		count = -EFAULT;
++		goto unlock;
++	}
+ 
+ 	*ppos += count;
+ 	dev_info(chrdev->dev, "return %ld bytes (*ppos=%lld)\n", count, *ppos);
+ 
++unlock:
++	/* Release the mutex */
++	mutex_unlock(&chrdev->mux);
++
+ 	return count;
+ }
+ 
+@@ -172,18 +204,27 @@ static ssize_t chrdev_write(struct file *filp,
+ 	if (chrdev->read_only)
+ 		return -EINVAL;
+ 
++	/* Grab the mutex */
++	mutex_lock(&chrdev->mux);
++
+ 	/* Check for end-of-buffer */
+ 	if (*ppos + count >= BUF_LEN)
+ 		count = BUF_LEN - *ppos;
+ 
+ 	/* Get data from the user space */
+ 	ret = copy_from_user(chrdev->buf + *ppos, buf, count);
+-	if (ret < 0)
+-		return -EFAULT;
++	if (ret < 0) {
++		count = -EFAULT;
++		goto unlock;
++	}
+ 
+ 	*ppos += count;
+ 	dev_info(chrdev->dev, "got %ld bytes (*ppos=%lld)\n", count, *ppos);
+ 
++unlock:
++	/* Release the mutex */
++	mutex_unlock(&chrdev->mux);
++
+ 	return count;
+ }
+ 
+@@ -280,6 +321,7 @@ int chrdev_device_register(const char *label, unsigned int id,
+ 	chrdev->read_only = read_only;
+ 	chrdev->busy = 1;
+ 	strncpy(chrdev->label, label, NAME_LEN);
++	mutex_init(&chrdev->mux);
+ 
+ 	dev_info(chrdev->dev, "chrdev %s with id %d added\n", label, id);
+ 
+diff --git a/chapter_07/chrdev/chrdev.h b/chapter_07/chrdev/chrdev.h
+index 40a244f..4c8cd34 100644
+--- a/chapter_07/chrdev/chrdev.h
++++ b/chapter_07/chrdev/chrdev.h
+@@ -3,6 +3,7 @@
+  */
+ 
+ #include <linux/cdev.h>
++#include <linux/mutex.h>
+ #include "chrdev_ioctl.h"
+ 
+ #define MAX_DEVICES	8
+@@ -24,6 +25,8 @@ struct chrdev_device {
+ 	struct module *owner;
+ 	struct cdev cdev;
+ 	struct device *dev;
++
++        struct mutex mux;
+ };
+ 
+ /*
