@@ -4,7 +4,7 @@
 
 This is the code repository for [Linux Device Driver Development Cookbook](https://www.packtpub.com/networking-and-servers/continuous-delivery-docker-and-jenkins?utm_source=github&utm_medium=repository&utm_campaign=9781787125230), published by Packt.
 
-**Create secure applications by building complete CI/CD pipelines**
+**Develop custom drivers for your embedded Linux applications**
 
 ## What is this book about?
 Device drivers play a critical role in how the system performs and ensures that the device works in the intended way.
